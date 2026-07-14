@@ -5,11 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Addison & Elizabeth's Cozy Arcade - Self-hosted web portal for playing Cat Chess remotely via WebRTC and Tailscale.">
   <title>Addison & Elizabeth's Arcade 🐱</title>
-  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
-  <!-- Core Stylesheet -->
   <link rel="stylesheet" href="style.css">
   <script>
     if (new URLSearchParams(window.location.search).get('embed') === '1') {
@@ -19,9 +17,8 @@
 </head>
 <body>
   <div class="stars-overlay"></div>
-  
+
   <div class="portal-wrapper">
-    <!-- Header -->
     <header class="arcade-header">
       <div class="logo-area">
         <span class="cat-icon">🐱</span>
@@ -30,19 +27,27 @@
           <p class="arcade-subtitle">Purr-fect Headless Gaming Portal &bull; Cat Chess Edition 🐾</p>
         </div>
       </div>
-      <div class="system-status-badge">
-        <span class="pulse-indicator status-offline" id="status-dot"></span>
-        <span id="status-text">Disconnected</span>
+      <div class="header-meta">
+        <div class="presence-pill" id="presence-pill">Checking who’s here…</div>
+        <div class="system-status-badge">
+          <span class="pulse-indicator status-offline" id="status-dot"></span>
+          <span id="status-text">Disconnected</span>
+        </div>
       </div>
     </header>
 
-    <!-- Main Content Layout -->
+    <div class="mobile-play-bar" id="mobile-play-bar">
+      <p class="orientation-tip">Rotate your phone sideways for the best Cat Chess view. Pair a Bluetooth controller before connecting.</p>
+      <div class="mobile-play-actions">
+        <button class="btn btn-primary" id="mobile-connect-btn">Start Stream</button>
+        <a class="btn btn-secondary" id="open-new-tab-link" href="/play" target="_blank" rel="noopener">Open in new tab</a>
+      </div>
+    </div>
+
     <main class="arcade-main">
-      <!-- Game Container Section -->
       <section class="viewport-section">
         <div class="game-container-wrapper">
           <div class="game-container" id="main-game-container">
-            <!-- Overlay Loader/Intro -->
             <div class="container-overlay" id="stream-overlay">
               <div class="overlay-card">
                 <span class="overlay-cat" id="overlay-icon">🎮😸</span>
@@ -53,12 +58,10 @@
               </div>
             </div>
 
-            <!-- Embedded Stream (Iframe) Container -->
             <div class="stream-frame-container hidden" id="iframe-container">
               <iframe id="stream-iframe" src="" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
             </div>
 
-            <!-- Stream HUD controls (Floating Overlays) -->
             <div class="hud-overlay hidden" id="hud-controls">
               <div class="hud-group">
                 <button class="hud-btn" id="hud-reconnect" title="Reload the embedded stream">
@@ -81,25 +84,55 @@
         </div>
       </section>
 
-      <!-- Sidebar / Config Section -->
       <aside class="sidebar-section">
-        <!-- Connection Control Panel -->
+        <div class="panel glass-panel">
+          <h2 class="panel-title">🐾 Co-op Ready</h2>
+          <div class="panel-body">
+            <p class="you-are" id="you-are">Signed in as…</p>
+            <ul class="checklist" id="coop-checklist">
+              <li data-check="unlocked">Unlocked</li>
+              <li data-check="bridge">Stream bridge</li>
+              <li data-check="game">Cat Chess running</li>
+              <li data-check="both">Liz + Addison present</li>
+            </ul>
+            <p class="help-text coop-tip">
+              Split-screen Cat Chess needs <strong>one shared stream</strong> and
+              <strong>two gamepads</strong> (one per phone/device). Both of you can watch;
+              each Moonlight client forwards its controller to the host.
+            </p>
+            <div class="actions-row wrap-actions">
+              <button class="btn btn-primary" id="launch-game-btn">Start Cat Chess</button>
+              <button class="btn btn-secondary" id="invite-btn">Discord Invite</button>
+            </div>
+            <div class="identity-switch">
+              <span class="help-text">Switch player on this device:</span>
+              <button class="btn btn-ghost" data-switch-name="Liz" type="button">Liz</button>
+              <button class="btn btn-ghost" data-switch-name="Addison" type="button">Addison</button>
+            </div>
+            <p class="action-feedback" id="action-feedback" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <div class="panel glass-panel">
+          <h2 class="panel-title">📝 Session Note</h2>
+          <div class="panel-body">
+            <label class="sr-only" for="session-note">Shared session note</label>
+            <textarea id="session-note" class="form-control note-box" rows="4" placeholder="e.g. Slot 2 — Liz’s turn as White — don’t host a new game."></textarea>
+            <div class="actions-row">
+              <button class="btn btn-primary" id="save-note-btn">Save Note</button>
+            </div>
+            <p class="help-text" id="note-meta">Not saved yet</p>
+          </div>
+        </div>
+
         <div class="panel glass-panel">
           <h2 class="panel-title">🕹️ Connection Control</h2>
           <div class="panel-body">
             <div class="form-group">
-              <label for="stream-mode">Streaming Protocol Mode</label>
-              <select id="stream-mode" class="form-control">
-                <option value="iframe" selected>Embedded Stream (Iframe Bridge - Recommended)</option>
-              </select>
-            </div>
-            
-            <div class="form-group">
               <label for="bridge-url">Stream Bridge Address</label>
               <input type="text" id="bridge-url" class="form-control" value="/stream/" placeholder="e.g. /stream/ or http://localhost:8080/">
-              <small class="help-text">Using <code>/stream/</code> runs through the Express Tailscale proxy and is health-checked before connecting.</small>
+              <small class="help-text">Using <code>/stream/</code> runs through the Express proxy and is health-checked before connecting.</small>
             </div>
-
             <div class="actions-row">
               <button class="btn btn-primary" id="connect-btn">Connect Stream</button>
               <button class="btn btn-secondary hidden" id="disconnect-btn">Disconnect</button>
@@ -107,32 +140,42 @@
           </div>
         </div>
 
-        <!-- Controls Guide & Help -->
         <div class="panel glass-panel">
-          <h2 class="panel-title">🐾 Mobile & Desktop Controls</h2>
+          <h2 class="panel-title">📶 Stream Quality Tips</h2>
+          <div class="panel-body">
+            <div class="qos-presets" id="qos-presets">
+              <button type="button" class="qos-btn" data-preset="smooth">Smooth</button>
+              <button type="button" class="qos-btn" data-preset="balanced">Balanced</button>
+              <button type="button" class="qos-btn" data-preset="pretty">Pretty</button>
+            </div>
+            <p class="help-text" id="qos-guidance">Choose a preset for Moonlight settings guidance.</p>
+          </div>
+        </div>
+
+        <div class="panel glass-panel">
+          <h2 class="panel-title">🐾 Mobile &amp; Desktop Controls</h2>
           <div class="panel-body">
             <ul class="control-list">
               <li>
+                <span class="control-key">Split-screen</span>
+                <span class="control-desc">Both open this portal stream. Each device should have its own Bluetooth/USB controller so Sunshine sees two pads.</span>
+              </li>
+              <li>
                 <span class="control-key">Fullscreen</span>
-                <span class="control-desc">Use the HUD button or press <strong>F11</strong> to go full screen for best immersion.</span>
+                <span class="control-desc">Use the HUD button or press <strong>F11</strong> for immersion.</span>
               </li>
               <li>
-                <span class="control-key">Touch Mouse</span>
-                <span class="control-desc">Use the controls provided by the embedded Moonlight page. This portal deliberately does not inject an incompatible touch-input protocol.</span>
+                <span class="control-key">Moonlight controls</span>
+                <span class="control-desc">Mouse, touch, keyboard, and gamepad are handled by the embedded Moonlight page.</span>
               </li>
               <li>
-                <span class="control-key">Gamepad Support</span>
-                <span class="control-desc">Connect a controller, then configure it in the embedded Moonlight page if supported by your bridge version.</span>
-              </li>
-              <li>
-                <span class="control-key">Tailscale Mesh</span>
-                <span class="control-desc">Access this portal on your phone using <code>http://[Host-Tailscale-IP]:3000</code>.</span>
+                <span class="control-key">Fallback</span>
+                <span class="control-desc">If browser dual-input is flaky, use native Moonlight apps against the same Sunshine host; keep this portal for launch, notes, and presence.</span>
               </li>
             </ul>
           </div>
         </div>
 
-        <!-- Quick Info Panel -->
         <div class="panel glass-panel info-panel">
           <h2 class="panel-title">🐱 Cat Chess Appliance Info</h2>
           <div class="panel-body info-grid">
@@ -145,8 +188,8 @@
               <span class="info-value" id="stream-health-detail">Not checked yet</span>
             </div>
             <div class="info-item">
-              <span class="info-label">GPU Encoder</span>
-              <span class="info-value">Intel QuickSync (i5 8th Gen)</span>
+              <span class="info-label">Game Process</span>
+              <span class="info-value" id="game-status">Checking…</span>
             </div>
             <div class="info-item">
               <span class="info-label">Virtual Resolution</span>
@@ -157,9 +200,8 @@
       </aside>
     </main>
 
-    <!-- Footer -->
     <footer class="arcade-footer">
-      <p>Handcrafted with 💖 for Addison & Elizabeth. Powered by Node.js, WebRTC, and Sunshine.</p>
+      <p>Handcrafted with 💖 for Addison &amp; Elizabeth. Powered by Node.js, WebRTC, and Sunshine.</p>
     </footer>
   </div>
 

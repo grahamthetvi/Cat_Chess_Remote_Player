@@ -46,14 +46,17 @@ Welcome to the self-hosted, headless gaming appliance project! This repository c
 ## 📦 Directory Structure
 
 ```
-├── server.js                 # Express server handling portal routes & WebRTC WS proxy
+├── server.js                 # Express portal, auth/identity, APIs, stream proxy
 ├── package.json              # Node dependencies (express, ws, http-proxy-middleware)
+├── data/
+│   └── arcade.secrets.example.json  # Template for host secrets (copy locally)
 ├── public/
-│   ├── index.html            # Main cozy portal user interface
+│   ├── index.html            # Cozy portal + co-op play UI
 │   ├── style.css             # Glassmorphism, cat-themed dark mode design
-│   └── app.js                # Input forwarding and WebRTC connection controller
+│   └── app.js                # Stream, presence, notes, launch, invite controls
 └── scripts/
     ├── arcade.config.example.ps1 # Template for the local Steam game path
+    ├── launch-game.ps1       # Whitelisted game status/launch helper
     └── start-arcade.ps1      # PowerShell startup automation orchestrator
 ```
 
@@ -158,16 +161,19 @@ We register our Express backend as a Windows service so it runs silently in the 
    * **Details Tab:**
      * **Display name:** `Addison & Elizabeth's Cozy Arcade Portal`
      * **Startup type:** `Automatic`
-   * **Environment Tab:** Set the portal configuration:
+   * **Environment Tab:** Set the portal configuration (optional if using `data/arcade.secrets.json`):
      ```text
      PORT=3000
      STREAM_TARGET=http://127.0.0.1:8080
-    ARCADE_ACCESS_TOKEN=replace-with-a-long-random-secret
-    ALLOWED_EMBED_ORIGINS=https://www.example.com,https://example.com
+     ARCADE_ACCESS_TOKEN=replace-with-a-long-random-secret
+     ALLOWED_EMBED_ORIGINS=https://www.example.com,https://example.com
+     DISCORD_WEBHOOK_URL=
+     PUBLIC_PLAY_URL=https://arcade.example.com/play
      ```
-   `ALLOWED_EMBED_ORIGINS` is optional. When it is unset, the portal can only
-   be framed by pages served from the portal's own origin. Add only the
-   complete origins of websites that should be allowed to iframe the arcade.
+   Prefer putting the access token, security question keywords, and Discord webhook in
+   `data/arcade.secrets.json` on the host (see section 6). `ALLOWED_EMBED_ORIGINS` is optional.
+   When it is unset, the portal can only be framed by pages served from the portal's own origin.
+   Add only the complete origins of websites that should be allowed to iframe the arcade.
 5. Click **Install service**.
 6. Start the service by running:
    ```cmd
@@ -178,17 +184,38 @@ Now, the portal is running. You can verify it by opening `http://localhost:3000`
 
 ---
 
-### 6. Access Control and HTTPS
+### 6. Secrets, Access Control, and HTTPS
 
-Set `ARCADE_ACCESS_TOKEN` before sharing the portal outside of a fully trusted network. Use a long, unique secret; for example, generate one with:
+Secrets **never go through Git**. The Windows host keeps the real file; your development machine only needs the committed example (or an optional dummy copy for local unlock testing).
+
+On the **host laptop**:
+
+```powershell
+Copy-Item .\data\arcade.secrets.example.json .\data\arcade.secrets.json
+notepad .\data\arcade.secrets.json
+```
+
+Fill in:
+
+| Field | Purpose |
+| --- | --- |
+| `accessToken` | Shared unlock secret (same role as `ARCADE_ACCESS_TOKEN`) |
+| `securityQuestion` | Shown only for unknown IPs |
+| `acceptedKeywords` | Normalized keywords that count as a correct answer (e.g. `park`, `trail`) |
+| `discordWebhookUrl` | Optional Discord invite / bridge-online notifications |
+| `publicPlayUrl` | Link included in Discord invites |
+
+`data/arcade.secrets.json`, `known-ips.json`, `session-note.json`, and `audit.log` are gitignored. On a Linux/dev checkout, either leave secrets unset for open local UI work, or create a **dummy** `data/arcade.secrets.json`. If you must copy the real host file to another machine, use Tailscale/`scp`/USB — never commit it.
+
+Environment variables still override the secrets file when set (`ARCADE_ACCESS_TOKEN`, `DISCORD_WEBHOOK_URL`, `PUBLIC_PLAY_URL`). Generate a strong token with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-When the token is set, the portal and `/stream` proxy require it. Visitors receive a mobile-friendly unlock form. You can also send a one-time link such as `https://arcade.example.com/?access_token=YOUR_TOKEN`; it exchanges the token for a 30-day, `HttpOnly` cookie and redirects to a URL without the token. Treat that link and cookie as credentials. Changing the token invalidates sessions when the service restarts.
+When a token is set (env or secrets file), unlock is required. After unlock, unknown IPs answer the security question (keyword match), then choose **Liz** or **Addison**. That IP→name mapping is remembered in `data/known-ips.json`. One-time links such as `https://arcade.example.com/?access_token=YOUR_TOKEN` still exchange for a 30-day `HttpOnly` cookie, then continue to identity.
 
-`/api/health` is intentionally public for simple uptime monitoring, but returns only `{"status":"healthy"}`. The stream-status endpoint, all portal assets, `/play`, and the WebSocket proxy are protected.
+`/api/health` stays public and returns only `{"status":"healthy"}`. Portal pages, `/play`, `/stream`, and the other APIs require access (and identity where applicable). Failed unlocks are rate-limited and written to `data/audit.log`.
 
 #### Private Tailscale HTTPS (recommended)
 
@@ -280,15 +307,37 @@ It returns `available: true`, the bridge HTTP status, and probe latency when the
 
 The portal deliberately embeds the official Moonlight web page rather than attempting its own WebRTC signaling or input protocol. Direct WebRTC/player controls were removed because `moonlight-web-stream` owns a version-specific signaling and input flow; use the controls on the embedded Moonlight page for mouse, touch, keyboard, and gamepad support.
 
+### Cat Chess split-screen co-op (two remote players)
+
+Cat Chess Steam split-screen is **one game on the host** with **two local controllers**. The portal does **not** exclusive-lock the stream: both of you should open `/play` and watch the same desktop.
+
+1. Install [ViGEmBus](https://github.com/ViGEm/ViGEmBus/releases) on the Windows host so Sunshine can expose virtual Xbox pads.
+2. Prefer Xbox-style Bluetooth/USB controllers. On each phone/laptop, pair **one** controller before connecting the stream.
+3. In Steam, avoid Steam Input collapsing both pads into a single device for Cat Chess (prefer the game’s default / Xbox controller path).
+4. Confirm Windows **Settings → Devices → Game Controllers** (or `joy.cpl`) shows **two** controllers when both Moonlight clients are connected with pads.
+5. Use **Start Cat Chess** in the portal (calls `scripts/launch-game.ps1`) so the game is running and focused on the virtual display.
+6. Both click **Connect Stream**. Play split-screen PvP as if you were on the couch.
+
+If browser dual-client input is flaky, use **native Moonlight apps** against the same Sunshine host for the video/input path, and keep this portal for unlock, presence, launch, notes, and Discord invites.
+
+### Portal co-op features
+
+- **Presence:** header shows who is currently on the arcade (Liz / Addison heartbeats).
+- **Co-op checklist:** unlocked, bridge healthy, game running, both present.
+- **Session note:** shared sticky text for save slots / whose turn (`GET`/`PUT /api/notes`).
+- **Discord invite:** `POST /api/notify/invite` (requires webhook in secrets/env; rate-limited).
+- **Stream quality tips:** Smooth / Balanced / Pretty presets store a preference in `localStorage` and show Moonlight settings guidance (they do not re-encode video themselves).
+- **Audit log:** `GET /api/audit` (authenticated) returns recent unlock/identify/launch/invite/note events without raw tokens.
+
 ---
 
 ## 🎮 Play Game
 Once everything is running:
 1. Open the browser on your phone, tablet, or desktop connected to Tailscale.
-2. Navigate to `http://[Laptop-Tailscale-IP]:3000`.
-3. Select **Embedded Stream Mode** in the config.
-4. Click **Connect Stream** or **Start Stream** on the HUD.
-5. Control the game directly in the browser! Enjoy **Cat Chess**! 🐱🐾
+2. Navigate to `http://[Laptop-Tailscale-IP]:3000` (or `/play`).
+3. Unlock with the access token, complete identity (Liz or Addison), then use **Start Cat Chess** if needed.
+4. Click **Connect Stream** or **Start Stream**.
+5. Attach a controller per player for split-screen. Enjoy **Cat Chess**! 🐱🐾
 
 ## 🌐 Connect the Arcade to a Website
 Use the dedicated play URL for a button, card, or navigation link on your

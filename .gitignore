@@ -1,2 +1,10 @@
 # Per-machine arcade launch settings
 scripts/arcade.config.ps1
+
+# Host secrets and runtime state (never commit)
+data/arcade.secrets.json
+data/known-ips.json
+data/session-note.json
+data/audit.log
+data/*.json
+!data/*.example.json
