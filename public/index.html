@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Addison & Elizabeth's Cozy Arcade - Self-hosted web portal for playing Cat Chess remotely via WebRTC and Tailscale.">
+  <meta name="description" content="Addison & Elizabeth's Cozy Arcade — play Cat Chess together in the browser.">
   <title>Addison & Elizabeth's Arcade 🐱</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,7 +37,7 @@
     </header>
 
     <div class="mobile-play-bar" id="mobile-play-bar">
-      <p class="orientation-tip">Rotate your phone sideways for the best Cat Chess view. Pair a Bluetooth controller before connecting.</p>
+      <p class="orientation-tip">Rotate your phone sideways for the best Cat Chess view. Mouse and keyboard work in the stream; pair a Bluetooth controller per player for split-screen.</p>
       <div class="mobile-play-actions">
         <button class="btn btn-primary" id="mobile-connect-btn">Start Stream</button>
         <a class="btn btn-secondary" id="open-new-tab-link" href="/play" target="_blank" rel="noopener">Open in new tab</a>
@@ -157,8 +157,12 @@
           <div class="panel-body">
             <ul class="control-list">
               <li>
+                <span class="control-key">Mouse &amp; keyboard</span>
+                <span class="control-desc">After Connect Stream, your browser forwards mouse, touch, and keyboard into the game desktop.</span>
+              </li>
+              <li>
                 <span class="control-key">Split-screen</span>
-                <span class="control-desc">Both open this portal stream. Each device should have its own Bluetooth/USB controller so Sunshine sees two pads.</span>
+                <span class="control-desc">Both open this portal stream. For two-player pads, each device should have its own Bluetooth/USB controller so Sunshine sees two gamepads.</span>
               </li>
               <li>
                 <span class="control-key">Fullscreen</span>
@@ -166,11 +170,7 @@
               </li>
               <li>
                 <span class="control-key">Moonlight controls</span>
-                <span class="control-desc">Mouse, touch, keyboard, and gamepad are handled by the embedded Moonlight page.</span>
-              </li>
-              <li>
-                <span class="control-key">Fallback</span>
-                <span class="control-desc">If browser dual-input is flaky, use native Moonlight apps against the same Sunshine host; keep this portal for launch, notes, and presence.</span>
+                <span class="control-desc">Input is handled by the embedded Moonlight page once the stream is connected.</span>
               </li>
             </ul>
           </div>

@@ -795,6 +795,110 @@ html.embed-mode .game-container {
   border-radius: 0;
 }
 
+/* Public landing (lizandadd.com) */
+body.landing-page {
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.landing-aurora {
+  position: fixed;
+  inset: -20% -10%;
+  background:
+    radial-gradient(ellipse 50% 40% at 20% 30%, rgba(255, 117, 143, 0.28), transparent 60%),
+    radial-gradient(ellipse 45% 50% at 80% 20%, rgba(161, 140, 209, 0.24), transparent 55%),
+    radial-gradient(ellipse 60% 45% at 50% 90%, rgba(251, 194, 235, 0.12), transparent 50%);
+  animation: landingDrift 18s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes landingDrift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(2%, -3%, 0) scale(1.05); }
+}
+
+.landing-hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1.5rem 3rem;
+  max-width: 40rem;
+  margin: 0 auto;
+  animation: landingFade 0.9s ease-out both;
+}
+
+@keyframes landingFade {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.landing-brand {
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 8vw, 4.2rem);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, var(--accent-pink), var(--accent-yellow), var(--accent-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 24px var(--accent-pink-glow));
+}
+
+.landing-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 3.5vw, 1.55rem);
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.85rem;
+}
+
+.landing-lede {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  max-width: 28rem;
+  margin-bottom: 1.75rem;
+}
+
+.landing-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.landing-actions .btn {
+  text-decoration: none;
+  animation: landingPulse 2.8s ease-in-out infinite;
+}
+
+@keyframes landingPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 117, 143, 0.35); }
+  50% { box-shadow: 0 0 0 10px rgba(255, 117, 143, 0); }
+}
+
+.landing-status {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  body.landing-page {
+    overflow: auto;
+  }
+
+  .landing-hero {
+    min-height: 100svh;
+  }
+}
+
 /* Utility classes */
 .hidden {
   display: none !important;

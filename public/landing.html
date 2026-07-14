@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Liz & Addison's Arcade — a cozy place to play Cat Chess together in the browser.">
+  <title>Liz &amp; Addison</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="landing-page">
+  <div class="stars-overlay" aria-hidden="true"></div>
+  <div class="landing-aurora" aria-hidden="true"></div>
+
+  <main class="landing-hero">
+    <p class="landing-brand">Liz &amp; Addison</p>
+    <h1 class="landing-title">Our Cozy Arcade</h1>
+    <p class="landing-lede">
+      A private Cat Chess couch for two — open the arcade when you’re ready to play.
+    </p>
+    <div class="landing-actions">
+      <a class="btn btn-primary btn-large" href="/play">Enter the Arcade</a>
+    </div>
+    <p class="landing-status" id="landing-status" aria-live="polite">Checking the arcade…</p>
+  </main>
+
+  <script>
+    (function () {
+      const statusEl = document.getElementById('landing-status');
+      fetch('/api/public-status')
+        .then((response) => response.json())
+        .then((data) => {
+          if (!data.awake) {
+            statusEl.textContent = 'The arcade host looks offline right now.';
+            return;
+          }
+          statusEl.textContent = data.unlockRequired
+            ? 'Arcade is awake. Liz & Addison unlock to play.'
+            : 'Arcade is awake.';
+        })
+        .catch(() => {
+          statusEl.textContent = 'Could not reach the arcade host.';
+        });
+    }());
+  </script>
+</body>
+</html>

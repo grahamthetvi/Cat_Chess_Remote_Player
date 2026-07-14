@@ -39,8 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const QOS_PRESETS = {
     smooth: 'Smooth: 720p, 30–40 FPS, lower bitrate — best on weak hotel Wi‑Fi.',
-    balanced: 'Balanced: 1080p, 40–60 FPS, medium bitrate — default home Wi‑Fi / Tailscale.',
-    pretty: 'Pretty: 1080p, 60 FPS, higher bitrate — use on a strong LAN or fast tailnet link.'
+    balanced: 'Balanced: 1080p, 40–60 FPS, medium bitrate — default home Wi‑Fi.',
+    pretty: 'Pretty: 1080p, 60 FPS, higher bitrate — use on a strong LAN or fast broadband.'
   };
 
   let connected = false;

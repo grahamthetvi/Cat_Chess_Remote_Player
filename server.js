@@ -21,6 +21,7 @@ const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 const STREAM_TARGET = process.env.STREAM_TARGET || 'http://127.0.0.1:8080';
 const STREAM_HEALTH_TIMEOUT_MS = Number(process.env.STREAM_HEALTH_TIMEOUT_MS || 3000);
 const TRUST_PROXY = process.env.TRUST_PROXY || 'loopback';
+const PUBLIC_MODE = ['1', 'true', 'yes', 'on'].includes(String(process.env.PUBLIC_MODE || '').toLowerCase());
 const COOKIE_ACCESS = 'arcade_access';
 const COOKIE_IDENTITY = 'arcade_identity';
 const VALID_NAMES = new Set(['Liz', 'Addison']);
@@ -29,6 +30,7 @@ const UNLOCK_MAX_FAILURES = 8;
 const UNLOCK_LOCKOUT_MS = 15 * 60 * 1000;
 const INVITE_COOLDOWN_MS = 60_000;
 const BRIDGE_NOTIFY_COOLDOWN_MS = 10 * 60 * 1000;
+const PUBLIC_DIR = path.join(ROOT, 'public');
 
 ensureDataDir();
 const secrets = loadSecrets();
@@ -38,6 +40,11 @@ const PUBLIC_PLAY_URL = process.env.PUBLIC_PLAY_URL || secrets.publicPlayUrl || 
 const SECURITY_QUESTION = secrets.securityQuestion || 'Where was our first date?';
 const ACCEPTED_KEYWORDS = normalizeKeywordList(secrets.acceptedKeywords || []);
 const SIGNING_SECRET = ACCESS_TOKEN || secrets.accessToken || 'dev-local-signing-key';
+
+if (PUBLIC_MODE && !ACCESS_TOKEN) {
+  console.error('[Arcade] PUBLIC_MODE requires ARCADE_ACCESS_TOKEN or accessToken in data/arcade.secrets.json');
+  process.exit(1);
+}
 
 const ALLOWED_EMBED_ORIGINS = (process.env.ALLOWED_EMBED_ORIGINS || '')
   .split(',')
@@ -202,7 +209,27 @@ function needsIdentity(request) {
 function safeReturnTo(value) {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
     ? value
-    : '/';
+    : '/play';
+}
+
+function hasPlayIdentity(request) {
+  return !identityRequired() || Boolean(getIdentity(request));
+}
+
+function requireStreamSession(request, response, next) {
+  if (!isAuthenticated(request)) {
+    return response.status(401).type('html').send(`
+      <html><body style="background:#0f0f1a;color:#ff9bad;font-family:sans-serif;padding:2rem;">
+        <h1>Unauthorized</h1>
+        <p>Unlock the arcade before connecting to the stream.</p>
+        <p><a href="/unlock?returnTo=/play" style="color:#fbc2eb;">Unlock</a></p>
+      </body></html>
+    `);
+  }
+  if (!hasPlayIdentity(request)) {
+    return response.redirect(`/identify?returnTo=${encodeURIComponent(request.originalUrl)}`);
+  }
+  return next();
 }
 
 function setCookie(response, name, value, request, maxAgeMs) {
@@ -386,6 +413,22 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
 
+app.get('/api/public-status', (req, res) => {
+  res.json({
+    awake: true,
+    publicMode: PUBLIC_MODE,
+    unlockRequired: Boolean(ACCESS_TOKEN)
+  });
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'landing.html'));
+});
+
+app.get('/style.css', (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'style.css'));
+});
+
 app.get('/unlock', (req, res) => {
   const ip = clientIp(req);
   res.type('html').send(loginPage(safeReturnTo(req.query.returnTo), false, unlockLocked(ip)));
@@ -433,7 +476,8 @@ app.use((req, res, next) => {
   appendAudit({ action: 'unlock_link', ip, success: true });
   const url = new URL(req.originalUrl, `http://${req.headers.host || 'localhost'}`);
   url.searchParams.delete('access_token');
-  return res.redirect(`/identify?returnTo=${encodeURIComponent(`${url.pathname}${url.search}` || '/')}`);
+  const nextPath = `${url.pathname}${url.search}` || '/play';
+  return res.redirect(`/identify?returnTo=${encodeURIComponent(nextPath.startsWith('/') ? nextPath : '/play')}`);
 });
 
 app.get('/identify', (req, res) => {
@@ -483,10 +527,10 @@ app.post('/identify', (req, res) => {
 });
 
 app.use(requireAccess);
-app.use(express.static(path.join(ROOT, 'public')));
+app.use(express.static(PUBLIC_DIR, { index: false }));
 
 app.get('/play', (req, res) => {
-  res.sendFile(path.join(ROOT, 'public', 'index.html'));
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 app.get('/stream', (req, res) => {
@@ -528,7 +572,7 @@ const streamProxy = createProxyMiddleware({
   }
 });
 
-app.use('/stream', streamProxy);
+app.use('/stream', requireStreamSession, streamProxy);
 
 function checkStreamTarget() {
   return new Promise((resolve) => {
@@ -845,7 +889,10 @@ app.get('/api/coop-status', async (req, res) => {
 });
 
 app.get('*', (req, res) => {
-  res.sendFile(path.join(ROOT, 'public', 'index.html'));
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  return res.redirect('/play');
 });
 
 const server = app.listen(PORT, BIND_HOST, () => {
@@ -853,9 +900,11 @@ const server = app.listen(PORT, BIND_HOST, () => {
   console.log("🐱 ADDISON & ELIZABETH'S COZY ARCADE PORTAL IS ALIVE");
   console.log('======================================================');
   console.log(`Portal Address: http://localhost:${PORT}`);
+  console.log(`Public landing: http://localhost:${PORT}/`);
+  console.log(`Play (gated): http://localhost:${PORT}/play`);
   console.log(`Listening on: ${BIND_HOST}:${PORT}`);
   console.log(`Streaming Target: ${STREAM_TARGET}`);
-  console.log(`Tailscale Address: http://<your-tailscale-ip>:${PORT}`);
+  console.log(`Public mode: ${PUBLIC_MODE ? 'ON (token required)' : 'off'}`);
   if (ACCESS_TOKEN) {
     console.log('Access control: enabled');
   } else {
@@ -866,16 +915,20 @@ const server = app.listen(PORT, BIND_HOST, () => {
   } else {
     console.log('Secrets file: not found (using env / defaults)');
   }
+  console.log('Publish via Cloudflare Tunnel to this loopback port for lizandadd.com');
+  console.log('Tailscale on clients is optional (admin/private access only)');
   console.log('======================================================\n');
 });
 
 server.on('upgrade', (req, socket, head) => {
-  if (req.url.startsWith('/stream') && isAuthenticated(req)) {
-    streamProxy.upgrade(req, socket, head);
-  } else {
-    if (req.url.startsWith('/stream')) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-    }
+  if (!req.url.startsWith('/stream')) {
     socket.destroy();
+    return;
   }
+  if (!isAuthenticated(req) || !hasPlayIdentity(req)) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  streamProxy.upgrade(req, socket, head);
 });

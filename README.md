@@ -1,6 +1,6 @@
 # Addison & Elizabeth's Arcade 🐱🕹️
 
-Welcome to the self-hosted, headless gaming appliance project! This repository contains the complete codebase, automation scripts, and systems deployment blueprint to run **Cat Chess** on an older Windows laptop acting as a headless console, streamed over WebRTC directly into standard mobile and desktop web browsers via Tailscale.
+Welcome to the self-hosted, headless gaming appliance project! This repository runs **Cat Chess** on an always-on Windows laptop and publishes it at **https://lizandadd.com** — anyone can visit the public landing page; only Liz and Addison unlock to play. Players need a normal web browser (no Tailscale or other client installs). The host reaches the internet through a **Cloudflare Tunnel** so you do not open router ports.
 
 ## Project Architecture & Stack
 
@@ -16,29 +16,24 @@ Welcome to the self-hosted, headless gaming appliance project! This repository c
    │                                 ▼                           │
    │                       ┌──────────────────┐                  │
    │                       │  moonlight-web-  │                  │
-   │                       │  stream (Port 80)│                  │
+   │                       │  stream (loopback)│                 │
    │                       └──────────────────┘                  │
    │                                 ▲                           │
    │ ┌──────────────────────┐        │                           │
    │ │  Node.js Portal      │ ───────┼─ (Proxy to Stream)        │
-   │ │  Express (Port 3000) │ ───────┘                           │
-   └─└──────────────────────┘────────────────────────────────────┘
-             │                                        ▲
-             │ (Static Assets / HUD Panel)            │ (Encrypted Tailscale Tunnel)
-             ▼                                        │
-   ┌──────────────────────────────────────────────────┼──────────┐
-   │                   Client Web Browser             │          │
-   │                                                  │          │
-   │   ┌──────────────────────────────────────────────┴──────┐   │
-   │   │            Addison & Elizabeth's Arcade             │   │
-   │   │  ┌──────────────────────────────────────────────┐   │   │
-   │   │  │                                              │   │   │
-   │   │  │              WebRTC stream canvas            │   │   │
-   │   │  │              (16:9 Cozy Theme Overlay)       │   │   │
-   │   │  │                                              │   │   │
-   │   │  └──────────────────────────────────────────────┘   │   │
-   │   └─────────────────────────────────────────────────────┘   │
-   └─────────────────────────────────────────────────────────────┘
+   │ │  Express :3000       │ ───────┘                           │
+   │ │  BIND 127.0.0.1      │                                    │
+   └─└──────────┬───────────┘────────────────────────────────────┘
+                │ cloudflared tunnel (outbound only)
+                ▼
+   ┌────────────────────────────────────────────────────────────┐
+   │              Cloudflare (DNS + HTTPS for lizandadd.com)    │
+   └────────────────────────────┬───────────────────────────────┘
+                                ▼
+   ┌────────────────────────────────────────────────────────────┐
+   │                   Client Web Browser                       │
+   │  /  public landing  ·  /play gated arcade after unlock     │
+   └────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -51,8 +46,9 @@ Welcome to the self-hosted, headless gaming appliance project! This repository c
 ├── data/
 │   └── arcade.secrets.example.json  # Template for host secrets (copy locally)
 ├── public/
-│   ├── index.html            # Cozy portal + co-op play UI
-│   ├── style.css             # Glassmorphism, cat-themed dark mode design
+│   ├── landing.html          # Public brand home (no unlock)
+│   ├── index.html            # Gated co-op play UI (/play)
+│   ├── style.css             # Shared cozy theme + landing
 │   └── app.js                # Stream, presence, notes, launch, invite controls
 └── scripts/
     ├── arcade.config.example.ps1 # Template for the local Steam game path
@@ -123,11 +119,30 @@ Since the laptop sits plugged into AC power 24/7, keeping the battery charged at
 
 ---
 
-### 4. Set up Tailscale (Secure Mesh Network)
-1. Download and install [Tailscale for Windows](https://tailscale.com/download/windows).
-2. Log in with your Tailscale account.
-3. Turn on Tailscale. Note your laptop's Tailscale IP address (e.g. `100.x.y.z`).
-4. Install Tailscale on your mobile phones or client computers. This creates a secure, encrypted peer-to-peer connection so you can play anywhere without forwarding router ports.
+### 4. Publish lizandadd.com (Cloudflare Tunnel)
+
+Players should not install Tailscale. The laptop stays private on the LAN; Cloudflare Tunnel provides HTTPS for the domain without opening inbound ports (works behind CGNAT).
+
+1. Buy/register **lizandadd.com** and add it to a Cloudflare account (update nameservers as Cloudflare instructs).
+2. On the Windows host, install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+3. Authenticate and create a tunnel that points at the portal loopback address:
+
+```powershell
+cloudflared tunnel login
+cloudflared tunnel create cozy-arcade
+cloudflared tunnel route dns cozy-arcade lizandadd.com
+cloudflared tunnel route dns cozy-arcade www.lizandadd.com
+```
+
+4. Configure the tunnel ingress to `http://127.0.0.1:3000` (see Cloudflare’s config file docs). Run the tunnel as a Windows service so it starts at boot:
+
+```powershell
+cloudflared service install
+```
+
+5. Do **not** publish Node port 3000, moonlight-web-stream, or Sunshine on the public internet. Keep those on loopback / LAN only.
+
+**Optional:** Install Tailscale on the **host only** for admin SSH/`scp` to the laptop. Clients never need it.
 
 ---
 
@@ -164,27 +179,30 @@ We register our Express backend as a Windows service so it runs silently in the 
    * **Environment Tab:** Set the portal configuration (optional if using `data/arcade.secrets.json`):
      ```text
      PORT=3000
+     BIND_HOST=127.0.0.1
+     TRUST_PROXY=loopback
+     PUBLIC_MODE=1
      STREAM_TARGET=http://127.0.0.1:8080
      ARCADE_ACCESS_TOKEN=replace-with-a-long-random-secret
-     ALLOWED_EMBED_ORIGINS=https://www.example.com,https://example.com
+     PUBLIC_PLAY_URL=https://lizandadd.com/play
+     ALLOWED_EMBED_ORIGINS=
      DISCORD_WEBHOOK_URL=
-     PUBLIC_PLAY_URL=https://arcade.example.com/play
      ```
    Prefer putting the access token, security question keywords, and Discord webhook in
-   `data/arcade.secrets.json` on the host (see section 6). `ALLOWED_EMBED_ORIGINS` is optional.
-   When it is unset, the portal can only be framed by pages served from the portal's own origin.
-   Add only the complete origins of websites that should be allowed to iframe the arcade.
+   `data/arcade.secrets.json` on the host (see section 6). `PUBLIC_MODE=1` refuses to start
+   without an access token. `ALLOWED_EMBED_ORIGINS` is optional; leave empty unless you iframe
+   `/play` from another origin you control.
 5. Click **Install service**.
 6. Start the service by running:
    ```cmd
    net start CozyArcadePortal
    ```
 
-Now, the portal is running. You can verify it by opening `http://localhost:3000` or `http://[Tailscale-IP]:3000` in your web browser.
+Verify locally with `http://127.0.0.1:3000/` (public landing) and confirm Cloudflare serves `https://lizandadd.com`.
 
 ---
 
-### 6. Secrets, Access Control, and HTTPS
+### 6. Secrets, Access Control, and Public HTTPS
 
 Secrets **never go through Git**. The Windows host keeps the real file; your development machine only needs the committed example (or an optional dummy copy for local unlock testing).
 
@@ -199,60 +217,61 @@ Fill in:
 
 | Field | Purpose |
 | --- | --- |
-| `accessToken` | Shared unlock secret (same role as `ARCADE_ACCESS_TOKEN`) |
+| `accessToken` | Shared unlock secret for Liz & Addison (same role as `ARCADE_ACCESS_TOKEN`) |
 | `securityQuestion` | Shown only for unknown IPs |
 | `acceptedKeywords` | Normalized keywords that count as a correct answer (e.g. `park`, `trail`) |
 | `discordWebhookUrl` | Optional Discord invite / bridge-online notifications |
-| `publicPlayUrl` | Link included in Discord invites |
+| `publicPlayUrl` | Link included in Discord invites (`https://lizandadd.com/play`) |
 
-`data/arcade.secrets.json`, `known-ips.json`, `session-note.json`, and `audit.log` are gitignored. On a Linux/dev checkout, either leave secrets unset for open local UI work, or create a **dummy** `data/arcade.secrets.json`. If you must copy the real host file to another machine, use Tailscale/`scp`/USB — never commit it.
+`data/arcade.secrets.json`, `known-ips.json`, `session-note.json`, and `audit.log` are gitignored. On a Linux/dev checkout, either leave secrets unset for open local UI work, or create a **dummy** `data/arcade.secrets.json`. If you must copy the real host file to another machine, use a private channel (`scp`/USB/Tailscale admin) — never commit it.
 
-Environment variables still override the secrets file when set (`ARCADE_ACCESS_TOKEN`, `DISCORD_WEBHOOK_URL`, `PUBLIC_PLAY_URL`). Generate a strong token with:
+Environment variables override the secrets file when set (`ARCADE_ACCESS_TOKEN`, `DISCORD_WEBHOOK_URL`, `PUBLIC_PLAY_URL`, `PUBLIC_MODE`). Generate a strong token with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-When a token is set (env or secrets file), unlock is required. After unlock, unknown IPs answer the security question (keyword match), then choose **Liz** or **Addison**. That IP→name mapping is remembered in `data/known-ips.json`. One-time links such as `https://arcade.example.com/?access_token=YOUR_TOKEN` still exchange for a 30-day `HttpOnly` cookie, then continue to identity.
+#### Couple-only gate on a public domain
 
-`/api/health` stays public and returns only `{"status":"healthy"}`. Portal pages, `/play`, `/stream`, and the other APIs require access (and identity where applicable). Failed unlocks are rate-limited and written to `data/audit.log`.
+- **`/`** — public landing (no cookie). Anyone can visit.
+- **`/play`, `/stream`, and play APIs** — require unlock + Liz/Addison identity.
+- After unlock, unknown IPs answer the security question (keyword match), then choose **Liz** or **Addison**. That IP→name mapping is remembered in `data/known-ips.json`.
+- Prefer the unlock form. One-shot links such as `https://lizandadd.com/play?access_token=YOUR_TOKEN` still exchange for a 30-day `HttpOnly` cookie, then continue to identity (avoid posting long-lived token URLs in public channels).
+- Failed unlocks are rate-limited and written to `data/audit.log`.
+- Treat the access token like a household password: it grants interactive control of the game host through the stream.
+- Rotate the token if it is ever shared beyond the two of you.
 
-#### Private Tailscale HTTPS (recommended)
+`PUBLIC_MODE=1` (recommended on the host) refuses to start if no access token is configured.
 
-Tailscale encrypts tailnet traffic, but direct visits to Node still use a plain `http://` browser origin. For a browser-trusted HTTPS URL without exposing port 3000, bind Node to loopback and let Tailscale Serve terminate TLS:
+Public endpoints:
+
+- `GET /api/health` → `{"status":"healthy"}`
+- `GET /api/public-status` → awake flag only (no stream details)
+
+#### Cloudflare Tunnel + loopback Node (recommended)
 
 ```text
 BIND_HOST=127.0.0.1
 TRUST_PROXY=loopback
+PUBLIC_MODE=1
+PUBLIC_PLAY_URL=https://lizandadd.com/play
 ```
 
-Then on the Windows host:
+`cloudflared` connects outbound to Cloudflare and proxies to `127.0.0.1:3000`. `TRUST_PROXY=loopback` lets Express honor forwarded HTTPS so session cookies get the `Secure` flag. Do not port-forward 3000/8080/Sunshine.
+
+#### Optional private Tailscale HTTPS (admin / LAN)
+
+For admin-only access without the public domain, bind Node to loopback and use Tailscale Serve:
 
 ```powershell
 tailscale serve --https=443 http://127.0.0.1:3000
 ```
 
-Open the HTTPS URL printed by Tailscale. This remains tailnet-only unless you separately enable Funnel. Do not enable Funnel merely for convenience: it makes the service internet-reachable, so enable the token gate first and understand the exposure.
+This remains tailnet-only unless you enable Funnel. Prefer Cloudflare Tunnel for lizandadd.com player access.
 
-#### Public website or custom domain
+#### Optional Caddy reverse proxy
 
-Use Caddy (or another TLS reverse proxy) in front of Node, and keep Node private to the host:
-
-```text
-BIND_HOST=127.0.0.1
-TRUST_PROXY=loopback
-ARCADE_ACCESS_TOKEN=replace-with-a-long-random-secret
-```
-
-Example Caddyfile for a domain whose DNS points to this machine:
-
-```caddyfile
-arcade.example.com {
-    reverse_proxy 127.0.0.1:3000
-}
-```
-
-Caddy obtains and renews certificates and proxies HTTP and WebSocket upgrades. Do not forward Node's port 3000 through the router or firewall; publish only Caddy's HTTPS port. `TRUST_PROXY=loopback` lets Express recognize Caddy's forwarded HTTPS scheme so the session cookie gets its `Secure` flag. If the reverse proxy is on another host, set `TRUST_PROXY` to that proxy's specific IP address or CIDR rather than trusting all forwarded headers.
+If you already terminate TLS yourself (and can open port 443 cleanly), Caddy can reverse-proxy to `127.0.0.1:3000` instead of Cloudflare Tunnel. Keep the same token gate and `PUBLIC_MODE=1`.
 
 ---
 
@@ -331,51 +350,22 @@ If browser dual-client input is flaky, use **native Moonlight apps** against the
 
 ---
 
-## 🎮 Play Game
-Once everything is running:
-1. Open the browser on your phone, tablet, or desktop connected to Tailscale.
-2. Navigate to `http://[Laptop-Tailscale-IP]:3000` (or `/play`).
-3. Unlock with the access token, complete identity (Liz or Addison), then use **Start Cat Chess** if needed.
-4. Click **Connect Stream** or **Start Stream**.
-5. Attach a controller per player for split-screen. Enjoy **Cat Chess**! 🐱🐾
+## Play Game
 
-## 🌐 Connect the Arcade to a Website
-Use the dedicated play URL for a button, card, or navigation link on your
-website:
+Once the host stack and Cloudflare Tunnel are running:
 
-```html
-<a href="https://arcade.example.com/play">Play Cat Chess</a>
-```
+1. Open **https://lizandadd.com** in any browser (no client apps to install).
+2. Tap **Enter the Arcade** (goes to `/play`). Unlock with the shared access token, answer the security question if asked, then choose **Liz** or **Addison**.
+3. Use **Start Cat Chess** if the game is not already running.
+4. Click **Connect Stream** / **Start Stream**. Mouse and keyboard go into the game through the embedded Moonlight page.
+5. For split-screen two-player pads, attach one controller per device before connecting. Enjoy **Cat Chess**!
 
-For an in-page player, configure the portal host with the website's origin
-before starting Node:
+## Website links and embeds
 
-```text
-ALLOWED_EMBED_ORIGINS=https://www.example.com
-ARCADE_ACCESS_TOKEN=replace-with-a-long-random-secret
-```
-
-Then embed the lightweight player. `embed=1` removes the portal header,
-sidebar, and footer while retaining the stream launcher and HUD controls:
+The public landing already links into `/play`. For a button elsewhere:
 
 ```html
-<iframe
-  src="https://arcade.example.com/play?embed=1"
-  title="Play Cat Chess"
-  allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"
-  allowfullscreen
-  style="width: 100%; aspect-ratio: 16 / 9; border: 0;"
-></iframe>
+<a href="https://lizandadd.com/play">Play Cat Chess</a>
 ```
 
-The portal must be reachable by the website visitor. A Tailscale-only address
-works for people on the same tailnet; a public website needs a separately
-secured public route or reverse proxy. If the parent website uses HTTPS, serve
-the arcade over HTTPS too—browsers block an insecure (`http`) iframe inside an
-HTTPS page. Restart the portal after changing `ALLOWED_EMBED_ORIGINS`.
-
-The token gate works most reliably when the website and arcade are same-site
-subdomains (for example, `www.example.com` and `arcade.example.com`). Browsers
-may block the arcade session cookie as a third-party cookie when an unrelated
-domain embeds it. For unrelated domains, use the `/play` link to open the
-arcade in its own tab instead of relying on an iframe.
+Prefer opening `/play` in a top-level tab. Same-origin embeds of `/play?embed=1` work when `ALLOWED_EMBED_ORIGINS` includes the parent origin; cross-site iframes may block the session cookie — use the link instead.
