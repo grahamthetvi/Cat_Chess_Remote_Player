@@ -1,0 +1,23 @@
+{
+  "name": "cat-chess-remote-player",
+  "version": "1.0.0",
+  "description": "Cozy Arcade Web Portal for headless gaming via WebRTC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "webrtc",
+    "sunshine",
+    "moonlight",
+    "remote-gaming"
+  ],
+  "author": "Addison & Elizabeth",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "http-proxy-middleware": "^3.0.0",
+    "ws": "^8.17.1"
+  }
+}

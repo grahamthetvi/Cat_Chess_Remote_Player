@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Addison & Elizabeth's Cozy Arcade - Self-hosted web portal for playing Cat Chess remotely via WebRTC and Tailscale.">
+  <title>Addison & Elizabeth's Arcade 🐱</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+  <!-- Core Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  <script>
+    if (new URLSearchParams(window.location.search).get('embed') === '1') {
+      document.documentElement.classList.add('embed-mode');
+    }
+  </script>
+</head>
+<body>
+  <div class="stars-overlay"></div>
+  
+  <div class="portal-wrapper">
+    <!-- Header -->
+    <header class="arcade-header">
+      <div class="logo-area">
+        <span class="cat-icon">🐱</span>
+        <div class="title-sub">
+          <h1 id="arcade-title">Addison & Elizabeth's Arcade</h1>
+          <p class="arcade-subtitle">Purr-fect Headless Gaming Portal &bull; Cat Chess Edition 🐾</p>
+        </div>
+      </div>
+      <div class="system-status-badge">
+        <span class="pulse-indicator status-offline" id="status-dot"></span>
+        <span id="status-text">Disconnected</span>
+      </div>
+    </header>
+
+    <!-- Main Content Layout -->
+    <main class="arcade-main">
+      <!-- Game Container Section -->
+      <section class="viewport-section">
+        <div class="game-container-wrapper">
+          <div class="game-container" id="main-game-container">
+            <!-- Overlay Loader/Intro -->
+            <div class="container-overlay" id="stream-overlay">
+              <div class="overlay-card">
+                <span class="overlay-cat" id="overlay-icon">🎮😸</span>
+                <h2 id="overlay-title">Checking stream bridge…</h2>
+                <p id="overlay-message">The portal is verifying that moonlight-web-stream is reachable.</p>
+                <button class="btn btn-primary btn-large" id="quick-start-btn">Start Stream</button>
+                <button class="btn btn-secondary hidden" id="overlay-reconnect-btn">Try Again</button>
+              </div>
+            </div>
+
+            <!-- Embedded Stream (Iframe) Container -->
+            <div class="stream-frame-container hidden" id="iframe-container">
+              <iframe id="stream-iframe" src="" allow="autoplay; gamepad; fullscreen; clipboard-read; clipboard-write"></iframe>
+            </div>
+
+            <!-- Stream HUD controls (Floating Overlays) -->
+            <div class="hud-overlay hidden" id="hud-controls">
+              <div class="hud-group">
+                <button class="hud-btn" id="hud-reconnect" title="Reload the embedded stream">
+                  <span class="icon">🔄</span>
+                  <span class="hud-label">Reconnect</span>
+                </button>
+              </div>
+              <div class="hud-group">
+                <button class="hud-btn" id="hud-fullscreen" title="Toggle Fullscreen">
+                  <span class="icon">📺</span>
+                  <span class="hud-label">Fullscreen</span>
+                </button>
+                <button class="hud-btn btn-danger" id="hud-disconnect" title="Disconnect Stream">
+                  <span class="icon">🔌</span>
+                  <span class="hud-label">Disconnect</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sidebar / Config Section -->
+      <aside class="sidebar-section">
+        <!-- Connection Control Panel -->
+        <div class="panel glass-panel">
+          <h2 class="panel-title">🕹️ Connection Control</h2>
+          <div class="panel-body">
+            <div class="form-group">
+              <label for="stream-mode">Streaming Protocol Mode</label>
+              <select id="stream-mode" class="form-control">
+                <option value="iframe" selected>Embedded Stream (Iframe Bridge - Recommended)</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="bridge-url">Stream Bridge Address</label>
+              <input type="text" id="bridge-url" class="form-control" value="/stream/" placeholder="e.g. /stream/ or http://localhost:8080/">
+              <small class="help-text">Using <code>/stream/</code> runs through the Express Tailscale proxy and is health-checked before connecting.</small>
+            </div>
+
+            <div class="actions-row">
+              <button class="btn btn-primary" id="connect-btn">Connect Stream</button>
+              <button class="btn btn-secondary hidden" id="disconnect-btn">Disconnect</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls Guide & Help -->
+        <div class="panel glass-panel">
+          <h2 class="panel-title">🐾 Mobile & Desktop Controls</h2>
+          <div class="panel-body">
+            <ul class="control-list">
+              <li>
+                <span class="control-key">Fullscreen</span>
+                <span class="control-desc">Use the HUD button or press <strong>F11</strong> to go full screen for best immersion.</span>
+              </li>
+              <li>
+                <span class="control-key">Touch Mouse</span>
+                <span class="control-desc">Use the controls provided by the embedded Moonlight page. This portal deliberately does not inject an incompatible touch-input protocol.</span>
+              </li>
+              <li>
+                <span class="control-key">Gamepad Support</span>
+                <span class="control-desc">Connect a controller, then configure it in the embedded Moonlight page if supported by your bridge version.</span>
+              </li>
+              <li>
+                <span class="control-key">Tailscale Mesh</span>
+                <span class="control-desc">Access this portal on your phone using <code>http://[Host-Tailscale-IP]:3000</code>.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Quick Info Panel -->
+        <div class="panel glass-panel info-panel">
+          <h2 class="panel-title">🐱 Cat Chess Appliance Info</h2>
+          <div class="panel-body info-grid">
+            <div class="info-item">
+              <span class="info-label">Stream Bridge</span>
+              <span class="info-value" id="stream-health">Checking…</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Last Bridge Check</span>
+              <span class="info-value" id="stream-health-detail">Not checked yet</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">GPU Encoder</span>
+              <span class="info-value">Intel QuickSync (i5 8th Gen)</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Virtual Resolution</span>
+              <span class="info-value">1920x1080 @ 60Hz</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Footer -->
+    <footer class="arcade-footer">
+      <p>Handcrafted with 💖 for Addison & Elizabeth. Powered by Node.js, WebRTC, and Sunshine.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
