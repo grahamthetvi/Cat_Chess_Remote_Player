@@ -1,0 +1,9 @@
+(node:17932) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Arcade Proxy Error] Target: http://127.0.0.1:8080. Message: Parse Error: Data after `Connection: close`
+[HPM] Error occurred while proxying request lizandadd.com/stream/api/login to http://127.0.0.1:8080/ [HPE_CLOSED_CONNECTION] (https://nodejs.org/api/errors.html#errors_common_system_errors)
+[Arcade Proxy Error] Target: http://127.0.0.1:8080. Message: Parse Error: Data after `Connection: close`
+[HPM] Error occurred while proxying request lizandadd.com/stream/api/login to http://127.0.0.1:8080/ [HPE_CLOSED_CONNECTION] (https://nodejs.org/api/errors.html#errors_common_system_errors)
+[Arcade Proxy Error] Target: http://127.0.0.1:8080. Message: Parse Error: Data after `Connection: close`
+[HPM] Error occurred while proxying request lizandadd.com/stream/api/login to http://127.0.0.1:8080/ [HPE_CLOSED_CONNECTION] (https://nodejs.org/api/errors.html#errors_common_system_errors)
+^C

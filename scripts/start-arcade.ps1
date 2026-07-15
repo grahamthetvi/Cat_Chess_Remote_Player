@@ -92,7 +92,31 @@ if ($SunshineProcess) {
     }
 }
 
-# --- 3. VERIFY NODE.JS WEB PORTAL SERVICE ---
+# --- 3. VERIFY MOONLIGHT WEB STREAM BRIDGE ---
+Write-Log "Verifying Moonlight Web Stream Bridge (MoonlightWeb)..." "INFO"
+$MoonlightService = Get-Service -Name "MoonlightWeb" -ErrorAction SilentlyContinue
+if ($MoonlightService) {
+    if ($MoonlightService.Status -ne "Running") {
+        Write-Log "MoonlightWeb service is registered but stopped. Starting..." "WARNING"
+        Start-Service -Name "MoonlightWeb" -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+        $MoonlightService.Refresh()
+    }
+    if ($MoonlightService.Status -eq "Running") {
+        Write-Log "MoonlightWeb service is running." "SUCCESS"
+    } else {
+        Write-Log "MoonlightWeb service failed to start." "ERROR"
+    }
+} else {
+    try {
+        $Bridge = Invoke-WebRequest -Uri "http://127.0.0.1:8080/" -UseBasicParsing -TimeoutSec 3
+        Write-Log "moonlight-web responded on :8080 ($($Bridge.StatusCode))." "SUCCESS"
+    } catch {
+        Write-Log "MoonlightWeb service not registered and :8080 is not responding. Run scripts/install-stream-stack.ps1." "WARNING"
+    }
+}
+
+# --- 4. VERIFY NODE.JS WEB PORTAL SERVICE ---
 Write-Log "Verifying Node.js Express Portal (Service: $ExpressServiceName)..." "INFO"
 $PortalService = Get-Service -Name $ExpressServiceName -ErrorAction SilentlyContinue
 
@@ -122,7 +146,7 @@ if ($PortalService) {
     }
 }
 
-# --- 4. LAUNCH GAME AND FORCE WINDOW FOCUS ---
+# --- 5. LAUNCH GAME AND FORCE WINDOW FOCUS ---
 if ([string]::IsNullOrWhiteSpace($GamePath)) {
     Write-Log "No game path is configured. Copy arcade.config.example.ps1 to arcade.config.ps1 and set `$GamePath. Game launch skipped." "WARNING"
 } elseif (-not (Test-Path -LiteralPath $GamePath -PathType Leaf)) {

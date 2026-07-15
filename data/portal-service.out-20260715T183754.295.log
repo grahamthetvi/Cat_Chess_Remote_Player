@@ -1,0 +1,17 @@
+
+======================================================
+🐱 ADDISON & ELIZABETH'S COZY ARCADE PORTAL IS ALIVE
+======================================================
+Portal Address: http://localhost:3000
+Public landing: http://localhost:3000/
+Play (gated): http://localhost:3000/play
+Listening on: 127.0.0.1:3000
+Streaming Target: http://127.0.0.1:8080
+Public mode: ON (token required)
+Access control: enabled
+Secrets file: C:\Users\addis\Downloads\Cat_Chess_Remote_Player\data\arcade.secrets.json
+Publish via Cloudflare Tunnel to this loopback port for lizandadd.com
+Tailscale on clients is optional (admin/private access only)
+======================================================
+
+Terminate batch job (Y/N)? 

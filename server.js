@@ -1,5 +1,5 @@
 const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -19,6 +19,7 @@ const LAUNCH_SCRIPT = path.join(ROOT, 'scripts', 'launch-game.ps1');
 const PORT = process.env.PORT || 3000;
 const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 const STREAM_TARGET = process.env.STREAM_TARGET || 'http://127.0.0.1:8080';
+const STREAM_HEALTH_URL = process.env.STREAM_HEALTH_URL || '';
 const STREAM_HEALTH_TIMEOUT_MS = Number(process.env.STREAM_HEALTH_TIMEOUT_MS || 3000);
 const TRUST_PROXY = process.env.TRUST_PROXY || 'loopback';
 const PUBLIC_MODE = ['1', 'true', 'yes', 'on'].includes(String(process.env.PUBLIC_MODE || '').toLowerCase());
@@ -39,6 +40,8 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || secrets.discordWe
 const PUBLIC_PLAY_URL = process.env.PUBLIC_PLAY_URL || secrets.publicPlayUrl || '';
 const SECURITY_QUESTION = secrets.securityQuestion || 'Where was our first date?';
 const ACCEPTED_KEYWORDS = normalizeKeywordList(secrets.acceptedKeywords || []);
+const MOONLIGHT_USERNAME = process.env.MOONLIGHT_USERNAME || secrets.moonlightUsername || '';
+const MOONLIGHT_PASSWORD = process.env.MOONLIGHT_PASSWORD || secrets.moonlightPassword || '';
 const SIGNING_SECRET = ACCESS_TOKEN || secrets.accessToken || 'dev-local-signing-key';
 
 if (PUBLIC_MODE && !ACCESS_TOKEN) {
@@ -67,10 +70,19 @@ const unlockFailures = new Map();
 let lastInviteAt = 0;
 let lastBridgeNotifyAt = 0;
 let lastBridgeAvailable = null;
+/** Timestamp set when a proxied Moonlight login fails — host UI at 127.0.0.1:8080 polls this. */
+let moonlightLoginFailNudgeAt = 0;
 
 app.set('trust proxy', TRUST_PROXY);
 app.use(express.urlencoded({ extended: false }));
-app.use(express.json({ limit: '32kb' }));
+// Do not parse JSON for /stream — that body must reach moonlight-web unchanged.
+// express.json() consumes the stream and breaks proxied POST /api/login.
+app.use((req, res, next) => {
+  if (String(req.originalUrl || '').startsWith('/stream')) {
+    return next();
+  }
+  return express.json({ limit: '32kb' })(req, res, next);
+});
 
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', `frame-ancestors ${frameAncestors}`);
@@ -88,7 +100,9 @@ function loadSecrets() {
     if (!fs.existsSync(SECRETS_PATH)) {
       return {};
     }
-    return JSON.parse(fs.readFileSync(SECRETS_PATH, 'utf8'));
+    // Editors often save UTF-8 with BOM; JSON.parse rejects the leading character.
+    const raw = fs.readFileSync(SECRETS_PATH, 'utf8').replace(/^\uFEFF/, '');
+    return JSON.parse(raw);
   } catch (error) {
     console.warn(`[Arcade Secrets] Could not load ${SECRETS_PATH}: ${error.message}`);
     return {};
@@ -184,6 +198,11 @@ function clientIp(request) {
     return forwarded.split(',')[0].trim();
   }
   return request.ip || request.socket.remoteAddress || 'unknown';
+}
+
+function isLoopbackIp(ip) {
+  const value = String(ip || '').replace(/^::ffff:/i, '');
+  return value === '127.0.0.1' || value === '::1' || value === 'localhost';
 }
 
 function isAuthenticated(request) {
@@ -443,7 +462,8 @@ app.post('/unlock', (req, res) => {
     return res.status(429).type('html').send(loginPage(returnTo, false, true));
   }
 
-  if (!ACCESS_TOKEN || constantTimeEqual(req.body.accessToken, ACCESS_TOKEN)) {
+  const submitted = String(req.body.accessToken || '').trim();
+  if (!ACCESS_TOKEN || constantTimeEqual(submitted, ACCESS_TOKEN)) {
     clearUnlockFailures(ip);
     setAccessCookie(req, res);
     appendAudit({ action: 'unlock', ip, success: true });
@@ -465,7 +485,8 @@ app.use((req, res, next) => {
     return res.status(429).type('html').send(loginPage(safeReturnTo(req.path), false, true));
   }
 
-  if (!constantTimeEqual(req.query.access_token, ACCESS_TOKEN)) {
+  const submitted = String(req.query.access_token || '').trim();
+  if (!constantTimeEqual(submitted, ACCESS_TOKEN)) {
     recordUnlockFailure(ip);
     appendAudit({ action: 'unlock_link', ip, success: false });
     return res.status(401).type('html').send(loginPage(safeReturnTo(req.path), true));
@@ -526,6 +547,19 @@ app.post('/identify', (req, res) => {
   return res.redirect(returnTo);
 });
 
+// Host-only (loopback): failed client Moonlight logins bump nudgeAt so the
+// local tab at http://127.0.0.1:8080/stream/ can refresh and auto-sign-in.
+app.get('/api/moonlight-host-nudge', (req, res) => {
+  if (!isLoopbackIp(clientIp(req))) {
+    return res.status(403).json({ error: 'Host loopback only' });
+  }
+  res.json({
+    nudgeAt: moonlightLoginFailNudgeAt,
+    name: MOONLIGHT_USERNAME || null,
+    password: MOONLIGHT_PASSWORD || null
+  });
+});
+
 app.use(requireAccess);
 app.use(express.static(PUBLIC_DIR, { index: false }));
 
@@ -533,22 +567,83 @@ app.get('/play', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-app.get('/stream', (req, res) => {
-  res.redirect('/stream/');
+app.get('/stream', (req, res, next) => {
+  // Express non-strict routing treats /stream and /stream/ as the same route.
+  // Only redirect the bare path; /stream/ must fall through to the proxy or
+  // the iframe spins forever (302 → /stream/ → 302 → …).
+  const pathOnly = String(req.originalUrl || '').split('?')[0];
+  if (pathOnly === '/stream') {
+    return res.redirect('/stream/');
+  }
+  return next();
 });
+
+function rewriteMoonlightSetCookie(cookieHeader, viaHttps) {
+  const cookies = Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader];
+  return cookies.map((cookie) => {
+    let next = String(cookie)
+      // Host-only on the public domain (never leak Domain=127.0.0.1 from changeOrigin).
+      .replace(/;\s*Domain=[^;]*/gi, '')
+      .replace(/;\s*Path=[^;]*/i, '; Path=/stream');
+    if (!/;\s*Path=/i.test(next)) {
+      next += '; Path=/stream';
+    }
+    // Strict can drop the session when /stream is used inside the /play iframe after
+    // arriving on the portal via a cross-site link; Lax still blocks CSRF POSTs.
+    if (/;\s*SameSite=/i.test(next)) {
+      next = next.replace(/;\s*SameSite=[^;]*/i, '; SameSite=Lax');
+    } else {
+      next += '; SameSite=Lax';
+    }
+    if (viaHttps && !/;\s*Secure/i.test(next)) {
+      next += '; Secure';
+    }
+    return next;
+  });
+}
 
 const streamProxy = createProxyMiddleware({
   target: STREAM_TARGET,
   changeOrigin: true,
   ws: true,
-  pathRewrite: {
-    '^/stream': ''
+  // Match full /stream paths here instead of app.use('/stream', ...).
+  // Mounting strips the /stream prefix, which breaks Moonlight assets like
+  // /stream/stream/input.js (became /stream/input.js → 404 → blank video).
+  pathFilter: (pathname) => pathname === '/stream' || pathname.startsWith('/stream/'),
+  xfwd: true,
+  autoRewrite: true,
+  cookieDomainRewrite: '',
+  cookiePathRewrite: {
+    '*': '/stream'
   },
   logger: console,
-  onError: (err, req, res) => {
-    console.error(`[Arcade Proxy Error] Target: ${STREAM_TARGET}. Message: ${err.message}`);
-    if (res.status) {
-      res.status(502).send(`
+  // HPM v3 ignores legacy onProxyReq/onProxyRes/onError — must use on.*
+  on: {
+    proxyReq: fixRequestBody,
+    proxyRes: (proxyRes, req) => {
+      const pathOnly = String(req.originalUrl || req.url || '').split('?')[0];
+      const isMoonlightLogin =
+        req.method === 'POST' &&
+        (pathOnly === '/stream/api/login' || pathOnly.endsWith('/api/login'));
+      if (isMoonlightLogin && proxyRes.statusCode >= 400) {
+        moonlightLoginFailNudgeAt = Date.now();
+        console.log(`[Arcade] Moonlight login failed (${proxyRes.statusCode}) — host nudge ${moonlightLoginFailNudgeAt}`);
+      }
+      const setCookie = proxyRes.headers['set-cookie'];
+      if (!setCookie) {
+        return;
+      }
+      const forwarded = String(req.headers['x-forwarded-proto'] || '')
+        .split(',')[0]
+        .trim()
+        .toLowerCase();
+      const viaHttps = Boolean(req.secure || forwarded === 'https');
+      proxyRes.headers['set-cookie'] = rewriteMoonlightSetCookie(setCookie, viaHttps);
+    },
+    error: (err, req, res) => {
+      console.error(`[Arcade Proxy Error] Target: ${STREAM_TARGET}. Message: ${err.message}`);
+      if (res.status) {
+        res.status(502).send(`
         <html>
           <head>
             <title>Arcade Service Unavailable</title>
@@ -568,11 +663,36 @@ const streamProxy = createProxyMiddleware({
           </body>
         </html>
       `);
+      }
     }
   }
 });
 
-app.use('/stream', requireStreamSession, streamProxy);
+app.use((req, res, next) => {
+  const pathOnly = String(req.path || '').split('?')[0];
+  if (pathOnly === '/stream' || pathOnly.startsWith('/stream/')) {
+    return requireStreamSession(req, res, next);
+  }
+  return next();
+});
+app.use(streamProxy);
+
+function resolveStreamHealthUrl() {
+  if (STREAM_HEALTH_URL) {
+    return STREAM_HEALTH_URL;
+  }
+  try {
+    const parsed = new URL(STREAM_TARGET);
+    // Moonlight is mounted at /stream (url_path_prefix). Probe that path when
+    // STREAM_TARGET is only the origin (e.g. http://127.0.0.1:8080).
+    if (!parsed.pathname || parsed.pathname === '/') {
+      return `${parsed.origin}/stream/`;
+    }
+    return parsed.href.endsWith('/') ? parsed.href : `${parsed.href}/`;
+  } catch {
+    return `${String(STREAM_TARGET).replace(/\/$/, '')}/stream/`;
+  }
+}
 
 function checkStreamTarget() {
   return new Promise((resolve) => {
@@ -580,11 +700,11 @@ function checkStreamTarget() {
     let target;
 
     try {
-      target = new URL(STREAM_TARGET);
+      target = new URL(resolveStreamHealthUrl());
     } catch (error) {
       resolve({
         available: false,
-        error: `Invalid STREAM_TARGET: ${error.message}`,
+        error: `Invalid stream health URL: ${error.message}`,
         checkedAt: new Date().toISOString()
       });
       return;
@@ -597,6 +717,7 @@ function checkStreamTarget() {
       resolve({
         available,
         statusCode: response.statusCode,
+        healthUrl: target.href,
         ...(available ? {} : { error: `Bridge returned HTTP ${response.statusCode}` }),
         latencyMs: Date.now() - startedAt,
         checkedAt: new Date().toISOString()
@@ -610,6 +731,7 @@ function checkStreamTarget() {
       resolve({
         available: false,
         error: error.message,
+        healthUrl: target.href,
         latencyMs: Date.now() - startedAt,
         checkedAt: new Date().toISOString()
       });
@@ -742,6 +864,17 @@ app.get('/api/stream-status', async (req, res) => {
     portal: 'healthy',
     streamTarget: STREAM_TARGET,
     ...stream
+  });
+});
+
+// Unlocked arcade clients only. Used by moonlight-web auto-login patch.
+app.get('/api/moonlight-credentials', (req, res) => {
+  if (!MOONLIGHT_USERNAME || !MOONLIGHT_PASSWORD) {
+    return res.status(404).json({ error: 'Moonlight credentials are not configured' });
+  }
+  res.json({
+    name: MOONLIGHT_USERNAME,
+    password: MOONLIGHT_PASSWORD
   });
 });
 
@@ -929,6 +1062,12 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
+  }
+  // Browsers offer permessage-deflate; compressing already-compressed H.264/Opus
+  // over Cloudflare Tunnel burns CPU and adds backpressure → blank video while
+  // audio/input still work. Strip the extension so the origin negotiates raw frames.
+  if (req.headers['sec-websocket-extensions']) {
+    delete req.headers['sec-websocket-extensions'];
   }
   streamProxy.upgrade(req, socket, head);
 });

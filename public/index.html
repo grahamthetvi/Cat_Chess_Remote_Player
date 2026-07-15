@@ -53,6 +53,7 @@
                 <span class="overlay-cat" id="overlay-icon">🎮😸</span>
                 <h2 id="overlay-title">Checking stream bridge…</h2>
                 <p id="overlay-message">The portal is verifying that moonlight-web-stream is reachable.</p>
+                <p class="help-text" id="overlay-login-hint" hidden>Moonlight login uses the Moonlight web username (created on first /stream/ login), not the Sunshine admin account.</p>
                 <button class="btn btn-primary btn-large" id="quick-start-btn">Start Stream</button>
                 <button class="btn btn-secondary hidden" id="overlay-reconnect-btn">Try Again</button>
               </div>
@@ -85,64 +86,56 @@
       </section>
 
       <aside class="sidebar-section">
-        <div class="panel glass-panel">
-          <h2 class="panel-title">🐾 Co-op Ready</h2>
-          <div class="panel-body">
-            <p class="you-are" id="you-are">Signed in as…</p>
-            <ul class="checklist" id="coop-checklist">
-              <li data-check="unlocked">Unlocked</li>
-              <li data-check="bridge">Stream bridge</li>
-              <li data-check="game">Cat Chess running</li>
-              <li data-check="both">Liz + Addison present</li>
-            </ul>
-            <p class="help-text coop-tip">
-              Split-screen Cat Chess needs <strong>one shared stream</strong> and
-              <strong>two gamepads</strong> (one per phone/device). Both of you can watch;
-              each Moonlight client forwards its controller to the host.
-            </p>
-            <div class="actions-row wrap-actions">
-              <button class="btn btn-primary" id="launch-game-btn">Start Cat Chess</button>
-              <button class="btn btn-secondary" id="invite-btn">Discord Invite</button>
+        <div class="sidebar-shell glass-panel">
+          <header class="sidebar-head">
+            <div class="sidebar-head-top">
+              <h2 class="sidebar-title">Play desk</h2>
+              <p class="you-are" id="you-are">Signed in as…</p>
             </div>
-            <div class="identity-switch">
-              <span class="help-text">Switch player on this device:</span>
+            <div class="identity-switch compact-switch">
               <button class="btn btn-ghost" data-switch-name="Liz" type="button">Liz</button>
               <button class="btn btn-ghost" data-switch-name="Addison" type="button">Addison</button>
             </div>
-            <p class="action-feedback" id="action-feedback" aria-live="polite"></p>
-          </div>
-        </div>
+          </header>
 
-        <div class="panel glass-panel">
-          <h2 class="panel-title">📝 Session Note</h2>
-          <div class="panel-body">
-            <label class="sr-only" for="session-note">Shared session note</label>
-            <textarea id="session-note" class="form-control note-box" rows="4" placeholder="e.g. Slot 2 — Liz’s turn as White — don’t host a new game."></textarea>
-            <div class="actions-row">
-              <button class="btn btn-primary" id="save-note-btn">Save Note</button>
+          <div class="status-board" aria-label="Co-op readiness">
+            <ul class="checklist status-chips" id="coop-checklist">
+              <li data-check="unlocked">Unlocked</li>
+              <li data-check="bridge">Bridge</li>
+              <li data-check="game">Game</li>
+              <li data-check="both">Both here</li>
+            </ul>
+            <div class="status-metrics">
+              <div class="metric">
+                <span class="metric-label">Bridge</span>
+                <span class="metric-value" id="stream-health">Checking…</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Game</span>
+                <span class="metric-value" id="game-status">Checking…</span>
+              </div>
+              <div class="metric metric-wide">
+                <span class="metric-label">Checked</span>
+                <span class="metric-value" id="stream-health-detail">Not checked yet</span>
+              </div>
             </div>
-            <p class="help-text" id="note-meta">Not saved yet</p>
           </div>
-        </div>
 
-        <div class="panel glass-panel">
-          <h2 class="panel-title">🕹️ Connection Control</h2>
-          <div class="panel-body">
-            <div class="form-group">
-              <label for="bridge-url">Stream Bridge Address</label>
-              <input type="text" id="bridge-url" class="form-control" value="/stream/" placeholder="e.g. /stream/ or http://localhost:8080/">
-              <small class="help-text">Using <code>/stream/</code> runs through the Express proxy and is health-checked before connecting.</small>
-            </div>
-            <div class="actions-row">
+          <div class="sidebar-actions">
+            <div class="actions-row wrap-actions primary-actions">
+              <button class="btn btn-primary" id="launch-game-btn">Start Cat Chess</button>
               <button class="btn btn-primary" id="connect-btn">Connect Stream</button>
               <button class="btn btn-secondary hidden" id="disconnect-btn">Disconnect</button>
+              <button class="btn btn-secondary" id="invite-btn">Invite</button>
             </div>
+            <p class="action-feedback" id="action-feedback" aria-live="polite"></p>
+            <p class="help-text coop-tip">
+              One shared stream + two gamepads (one per device) for split-screen.
+            </p>
           </div>
-        </div>
 
-        <div class="panel glass-panel">
-          <h2 class="panel-title">📶 Stream Quality Tips</h2>
-          <div class="panel-body">
+          <div class="qos-inline">
+            <span class="qos-label">Quality</span>
             <div class="qos-presets" id="qos-presets">
               <button type="button" class="qos-btn" data-preset="smooth">Smooth</button>
               <button type="button" class="qos-btn" data-preset="balanced">Balanced</button>
@@ -150,60 +143,64 @@
             </div>
             <p class="help-text" id="qos-guidance">Choose a preset for Moonlight settings guidance.</p>
           </div>
-        </div>
 
-        <div class="panel glass-panel">
-          <h2 class="panel-title">🐾 Mobile &amp; Desktop Controls</h2>
-          <div class="panel-body">
-            <ul class="control-list">
+          <details class="sidebar-drawer">
+            <summary>Controls &amp; tips</summary>
+            <ul class="control-list compact-controls">
               <li>
-                <span class="control-key">Mouse &amp; keyboard</span>
-                <span class="control-desc">After Connect Stream, your browser forwards mouse, touch, and keyboard into the game desktop.</span>
+                <span class="control-key">Input</span>
+                <span class="control-desc">Mouse, touch, and keyboard go into the game after Connect.</span>
               </li>
               <li>
                 <span class="control-key">Split-screen</span>
-                <span class="control-desc">Both open this portal stream. For two-player pads, each device should have its own Bluetooth/USB controller so Sunshine sees two gamepads.</span>
+                <span class="control-desc">Both open this stream; each device needs its own controller.</span>
               </li>
               <li>
                 <span class="control-key">Fullscreen</span>
-                <span class="control-desc">Use the HUD button or press <strong>F11</strong> for immersion.</span>
-              </li>
-              <li>
-                <span class="control-key">Moonlight controls</span>
-                <span class="control-desc">Input is handled by the embedded Moonlight page once the stream is connected.</span>
+                <span class="control-desc">HUD button or <strong>F11</strong>.</span>
               </li>
             </ul>
-          </div>
-        </div>
+          </details>
 
-        <div class="panel glass-panel info-panel">
-          <h2 class="panel-title">🐱 Cat Chess Appliance Info</h2>
-          <div class="panel-body info-grid">
-            <div class="info-item">
-              <span class="info-label">Stream Bridge</span>
-              <span class="info-value" id="stream-health">Checking…</span>
+          <details class="sidebar-drawer">
+            <summary>Advanced</summary>
+            <div class="form-group compact-form">
+              <label for="bridge-url">Stream bridge address</label>
+              <input type="text" id="bridge-url" class="form-control" value="/stream/" placeholder="e.g. /stream/ or http://localhost:8080/">
+              <small class="help-text"><code>/stream/</code> uses the portal proxy and is health-checked first.</small>
             </div>
-            <div class="info-item">
-              <span class="info-label">Last Bridge Check</span>
-              <span class="info-value" id="stream-health-detail">Not checked yet</span>
+            <div class="info-grid compact-info">
+              <div class="info-item">
+                <span class="info-label">Virtual display</span>
+                <span class="info-value">1920×1080 @ 60Hz</span>
+              </div>
             </div>
-            <div class="info-item">
-              <span class="info-label">Game Process</span>
-              <span class="info-value" id="game-status">Checking…</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Virtual Resolution</span>
-              <span class="info-value">1920x1080 @ 60Hz</span>
-            </div>
-          </div>
+          </details>
         </div>
       </aside>
     </main>
 
     <footer class="arcade-footer">
-      <p>Handcrafted with 💖 for Addison &amp; Elizabeth. Powered by Node.js, WebRTC, and Sunshine.</p>
+      <p>A fun game to play when we aren't together. For Addison &amp; Elizabeth. Powered by Node.js, WebRTC, and Sunshine.</p>
+      <button type="button" class="util-chip" id="open-note-btn" title="Shared session note">📝 Session note</button>
     </footer>
   </div>
+
+  <dialog class="note-dialog" id="note-dialog">
+    <form method="dialog" class="note-dialog-card">
+      <header class="note-dialog-head">
+        <h2>Session note</h2>
+        <button type="submit" class="btn btn-ghost btn-compact" value="cancel" aria-label="Close">✕</button>
+      </header>
+      <label class="sr-only" for="session-note">Shared session note</label>
+      <textarea id="session-note" class="form-control note-box" rows="5" placeholder="e.g. Slot 2 — Liz’s turn as White — don’t host a new game."></textarea>
+      <p class="help-text" id="note-meta">Not saved yet</p>
+      <div class="note-dialog-actions">
+        <button type="submit" class="btn btn-secondary" value="cancel">Close</button>
+        <button type="button" class="btn btn-primary" id="save-note-btn">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

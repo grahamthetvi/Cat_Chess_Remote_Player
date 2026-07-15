@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const overlayIcon = document.getElementById('overlay-icon');
   const overlayTitle = document.getElementById('overlay-title');
   const overlayMessage = document.getElementById('overlay-message');
+  const overlayLoginHint = document.getElementById('overlay-login-hint');
   const iframeContainer = document.getElementById('iframe-container');
   const streamIframe = document.getElementById('stream-iframe');
   const hudControls = document.getElementById('hud-controls');
@@ -34,13 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const sessionNote = document.getElementById('session-note');
   const saveNoteBtn = document.getElementById('save-note-btn');
   const noteMeta = document.getElementById('note-meta');
+  const noteDialog = document.getElementById('note-dialog');
+  const openNoteBtn = document.getElementById('open-note-btn');
   const qosGuidance = document.getElementById('qos-guidance');
   const openNewTabLink = document.getElementById('open-new-tab-link');
 
   const QOS_PRESETS = {
-    smooth: 'Smooth: 720p, 30–40 FPS, lower bitrate — best on weak hotel Wi‑Fi.',
-    balanced: 'Balanced: 1080p, 40–60 FPS, medium bitrate — default home Wi‑Fi.',
-    pretty: 'Pretty: 1080p, 60 FPS, higher bitrate — use on a strong LAN or fast broadband.'
+    smooth: 'Smooth: 540p, 30 FPS, ~1.5 Mbps — required for Cloudflare Tunnel (lizandadd.com).',
+    balanced: 'Balanced: still clamped to tunnel-safe 540p over the public URL.',
+    pretty: 'Pretty: only useful on LAN; public tunnel will clamp down automatically.'
   };
 
   let connected = false;
@@ -67,6 +70,11 @@ document.addEventListener('DOMContentLoaded', () => {
   launchGameBtn.addEventListener('click', launchGame);
   inviteBtn.addEventListener('click', sendInvite);
   saveNoteBtn.addEventListener('click', saveNote);
+  openNoteBtn.addEventListener('click', async () => {
+    await loadNote();
+    noteDialog.showModal();
+    sessionNote.focus();
+  });
   window.addEventListener('online', refreshStatus);
   window.addEventListener('offline', () => showFailure('Browser is offline', 'Reconnect to the network, then try again.'));
   window.addEventListener('beforeunload', cleanupStream);
@@ -79,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
     button.addEventListener('click', () => selectQosPreset(button.getAttribute('data-preset')));
   });
 
-  const savedQos = localStorage.getItem('arcadeQosPreset') || 'balanced';
+  const savedQos = localStorage.getItem('arcadeQosPreset') || 'smooth';
   selectQosPreset(savedQos, false);
 
   setDisconnected('Checking stream bridge…');
@@ -227,13 +235,18 @@ document.addEventListener('DOMContentLoaded', () => {
         showFailure('Stream bridge returned an error', 'moonlight-web-stream could not serve the stream page. Verify the service, then reconnect.');
         return;
       }
+      // Moonlight UI loaded (iframe HTML). Stream session still needs WebSocket
+      // data transport over Cloudflare — WebRTC UDP will not work through the tunnel.
       streamOverlay.classList.add('hidden');
-      setConnectionControls(true, 'Stream page loaded');
+      setConnectionControls(true, 'Moonlight UI loaded — start Desktop; use Data Transport = Web Socket if the stream stalls');
     };
     streamIframe.onerror = () => showFailure('Stream page failed to load', 'Check the bridge address, then reconnect.');
     iframeLoadTimer = window.setTimeout(() => {
-      showFailure('Stream page timed out', 'moonlight-web-stream did not load within 15 seconds. Verify it is running and reconnect.');
-    }, 15000);
+      showFailure(
+        'Moonlight UI timed out (iframe never loaded)',
+        'The /stream/ page did not respond in 45s. Open https://lizandadd.com/stream/ in a new tab after unlock. If that works but Connect Stream fails, hard-refresh /play. If the UI loads but the game stream hangs, set Moonlight Settings → Data Transport → Web Socket (required through Cloudflare).'
+      );
+    }, 45000);
     streamIframe.src = targetUrl;
   }
 
@@ -282,6 +295,9 @@ document.addEventListener('DOMContentLoaded', () => {
     overlayMessage.textContent = streamHealthy
       ? 'Connect to open the embedded Moonlight stream. Both of you can join for split-screen.'
       : 'The portal is verifying that moonlight-web-stream is reachable.';
+    if (overlayLoginHint) {
+      overlayLoginHint.hidden = !streamHealthy;
+    }
     quickStartBtn.classList.toggle('hidden', !streamHealthy);
     reconnectBtn.classList.toggle('hidden', streamHealthy);
     setConnectionControls(false, message);

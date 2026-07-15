@@ -5,8 +5,12 @@
 # Steam's default library location:
 $GamePath = "C:\Program Files (x86)\Steam\steamapps\common\Cat Chess\CatChess.exe"
 
-# Optional arguments passed to Cat Chess on launch.
+# Optional arguments passed to Cat Chess on launch (ignored when SteamAppId is set).
 $GameArgs = ""
+
+# Prefer Steam -applaunch so the LocalSystem portal can start the game correctly.
+$SteamAppId = 4163030
+$SteamPath = "C:\Program Files (x86)\Steam\steam.exe"
 
 # Set to $true only to test startup without Cat Chess installed. This launches
 # Notepad explicitly; normal missing-game behavior is to warn and skip launch.

@@ -1,0 +1,3 @@
+[Arcade Secrets] Could not load C:\Users\addis\Downloads\Cat_Chess_Remote_Player\data\arcade.secrets.json: Unexpected token '﻿', "﻿{
+  "acc"... is not valid JSON
+[Arcade] PUBLIC_MODE requires ARCADE_ACCESS_TOKEN or accessToken in data/arcade.secrets.json
