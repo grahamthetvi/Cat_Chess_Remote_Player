@@ -738,6 +738,9 @@ select.form-control {
   padding: 0.75rem 1.5rem;
   cursor: pointer;
   transition: var(--transition-smooth);
+  text-decoration: none;
+  color: inherit;
+  box-sizing: border-box;
 }
 
 .btn-large {
@@ -777,6 +780,10 @@ select.form-control {
 
 .actions-row.primary-actions {
   margin-top: 0;
+}
+
+.actions-row.stream-tab-actions {
+  margin-top: 0.65rem;
 }
 
 .actions-row .btn {

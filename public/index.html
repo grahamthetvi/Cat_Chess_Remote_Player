@@ -38,9 +38,10 @@
 
     <div class="mobile-play-bar" id="mobile-play-bar">
       <p class="orientation-tip">Rotate your phone sideways for the best Cat Chess view. Mouse and keyboard work in the stream; pair a Bluetooth controller per player for split-screen.</p>
-      <div class="mobile-play-actions">
+        <div class="mobile-play-actions">
         <button class="btn btn-primary" id="mobile-connect-btn">Start Stream</button>
-        <a class="btn btn-secondary" id="open-new-tab-link" href="/play" target="_blank" rel="noopener">Open in new tab</a>
+        <a class="btn btn-secondary" id="open-stream-tab-mobile" href="/stream/" target="_blank" rel="noopener">Open stream in new tab</a>
+        <a class="btn btn-secondary hidden" id="open-new-tab-link" href="/play" target="_blank" rel="noopener">Open play in new tab</a>
       </div>
     </div>
 
@@ -55,6 +56,7 @@
                 <p id="overlay-message">The portal is verifying that moonlight-web-stream is reachable.</p>
                 <p class="help-text" id="overlay-login-hint" hidden>Moonlight login uses the Moonlight web username (created on first /stream/ login), not the Sunshine admin account.</p>
                 <button class="btn btn-primary btn-large" id="quick-start-btn">Start Stream</button>
+                <a class="btn btn-secondary" id="overlay-open-stream-tab" href="/stream/" target="_blank" rel="noopener">Open stream in new tab</a>
                 <button class="btn btn-secondary hidden" id="overlay-reconnect-btn">Try Again</button>
               </div>
             </div>
@@ -128,9 +130,13 @@
               <button class="btn btn-secondary hidden" id="disconnect-btn">Disconnect</button>
               <button class="btn btn-secondary" id="invite-btn">Invite</button>
             </div>
+            <div class="actions-row wrap-actions stream-tab-actions">
+              <a class="btn btn-secondary" id="open-stream-tab-btn" href="/stream/" target="_blank" rel="noopener">Open stream in new tab</a>
+              <button type="button" class="btn btn-ghost" id="fix-video-settings-btn">Fix video settings</button>
+            </div>
             <p class="action-feedback" id="action-feedback" aria-live="polite"></p>
             <p class="help-text coop-tip">
-              One shared stream + two gamepads (one per device) for split-screen.
+              Prefer <strong>Open stream in new tab</strong> if the embedded view is blank. Settings are applied automatically on this page (same browser).
             </p>
           </div>
 

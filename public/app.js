@@ -39,12 +39,61 @@ document.addEventListener('DOMContentLoaded', () => {
   const openNoteBtn = document.getElementById('open-note-btn');
   const qosGuidance = document.getElementById('qos-guidance');
   const openNewTabLink = document.getElementById('open-new-tab-link');
+  const openStreamTabBtn = document.getElementById('open-stream-tab-btn');
+  const openStreamTabMobile = document.getElementById('open-stream-tab-mobile');
+  const overlayOpenStreamTab = document.getElementById('overlay-open-stream-tab');
+  const fixVideoSettingsBtn = document.getElementById('fix-video-settings-btn');
 
+  // Must stay in sync with scripts/moonlight-patches/default_settings.js (_tunnelSchema).
+  const TUNNEL_SCHEMA = 4;
+  const TUNNEL_MAX_BITRATE = 2000;
+  const QOS_BITRATES = { smooth: 1500, balanced: 1500, pretty: 1500 };
   const QOS_PRESETS = {
-    smooth: 'Smooth: 540p, 30 FPS, ~1.5 Mbps — required for Cloudflare Tunnel (lizandadd.com).',
-    balanced: 'Balanced: still clamped to tunnel-safe 540p over the public URL.',
-    pretty: 'Pretty: only useful on LAN; public tunnel will clamp down automatically.'
+    smooth: 'Smooth: 540p, 30 FPS, ~1.5 Mbps — required for Cloudflare Tunnel (lizandadd.com). Applied to Moonlight automatically.',
+    balanced: 'Balanced: still clamped to tunnel-safe 540p / WebSocket over the public URL.',
+    pretty: 'Pretty: only useful on LAN; public tunnel stays clamped to 540p so video does not blank.'
   };
+  const TUNNEL_SAFE_BASE = {
+    sidebarEdge: 'left',
+    bitrate: 1500,
+    fps: 30,
+    videoFrameQueueSize: 5,
+    videoSize: 'custom',
+    videoSizeCustom: { width: 960, height: 540 },
+    videoCodec: 'h264',
+    forceVideoElementRenderer: false,
+    canvasRenderer: true,
+    canvasVsync: false,
+    playAudioLocal: false,
+    audioSampleQueueSize: 20,
+    mouseScrollMode: 'highres',
+    mouseMode: 'follow',
+    touchMode: 'mouseRelative',
+    localCursorSensitivity: 1,
+    controllerConfig: {
+      invertAB: false,
+      invertXY: false,
+      sendIntervalOverride: null
+    },
+    dataTransport: 'websocket',
+    language: 'en',
+    enterFullscreenOnStreamStart: false,
+    toggleFullscreenWithKeybind: false,
+    pageStyle: 'standard',
+    hdr: false,
+    useSelectElementPolyfill: false,
+    _tunnelSchema: TUNNEL_SCHEMA
+  };
+  const PRESERVE_KEYS = [
+    'language',
+    'sidebarEdge',
+    'mouseMode',
+    'mouseScrollMode',
+    'touchMode',
+    'localCursorSensitivity',
+    'controllerConfig',
+    'pageStyle'
+  ];
 
   let connected = false;
   let streamHealthy = false;
@@ -55,7 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (document.documentElement.classList.contains('embed-mode')) {
     openNewTabLink.href = '/play';
-  } else {
+    openNewTabLink.classList.remove('hidden');
+  } else if (openNewTabLink) {
     openNewTabLink.classList.add('hidden');
   }
 
@@ -70,6 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
   launchGameBtn.addEventListener('click', launchGame);
   inviteBtn.addEventListener('click', sendInvite);
   saveNoteBtn.addEventListener('click', saveNote);
+  fixVideoSettingsBtn.addEventListener('click', () => {
+    ensureTunnelSafeMlSettings(true);
+    setFeedback('Tunnel-safe video settings saved. Open stream in a new tab (or Connect Stream), then Start Desktop.');
+  });
+  wireStreamTabLink(openStreamTabBtn);
+  wireStreamTabLink(openStreamTabMobile);
+  wireStreamTabLink(overlayOpenStreamTab);
   openNoteBtn.addEventListener('click', async () => {
     await loadNote();
     noteDialog.showModal();
@@ -89,12 +146,92 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const savedQos = localStorage.getItem('arcadeQosPreset') || 'smooth';
   selectQosPreset(savedQos, false);
+  // Same origin as /stream/ — writing here fixes blank video without DevTools.
+  ensureTunnelSafeMlSettings(false);
 
   setDisconnected('Checking stream bridge…');
   refreshStatus();
   loadNote();
   window.setInterval(refreshStatus, 20000);
   window.setInterval(sendPresence, 20000);
+
+  function wireStreamTabLink(el) {
+    if (!el) return;
+    el.addEventListener('click', () => {
+      ensureTunnelSafeMlSettings(false);
+      setFeedback('Opening /stream/ in a new tab with tunnel-safe settings…');
+    });
+  }
+
+  function isOversizedForTunnel(settings) {
+    if (!settings) return false;
+    if (['720p', '1080p', '1440p', '4k', 'native'].includes(settings.videoSize)) {
+      return true;
+    }
+    if (settings.videoSize === 'custom' && settings.videoSizeCustom) {
+      const width = Number(settings.videoSizeCustom.width) || 0;
+      const height = Number(settings.videoSizeCustom.height) || 0;
+      if (width > 960 || height > 540) return true;
+    }
+    if (Number(settings.bitrate) > TUNNEL_MAX_BITRATE) return true;
+    if (Number(settings.fps) > 30) return true;
+    if (settings.dataTransport && settings.dataTransport !== 'websocket') return true;
+    return false;
+  }
+
+  function ensureTunnelSafeMlSettings(force) {
+    try {
+      let existing = null;
+      const raw = localStorage.getItem('mlSettings');
+      if (raw) {
+        try {
+          existing = JSON.parse(raw);
+        } catch {
+          existing = null;
+        }
+      }
+
+      const needsFix = force
+        || !existing
+        || existing._tunnelSchema !== TUNNEL_SCHEMA
+        || isOversizedForTunnel(existing);
+
+      if (!needsFix) {
+        return false;
+      }
+
+      const preserved = {};
+      if (existing) {
+        for (const key of PRESERVE_KEYS) {
+          if (existing[key] !== undefined) {
+            preserved[key] = existing[key];
+          }
+        }
+      }
+
+      const preset = localStorage.getItem('arcadeQosPreset') || 'smooth';
+      const bitrate = QOS_BITRATES[preset] || 1500;
+      const next = {
+        ...TUNNEL_SAFE_BASE,
+        ...preserved,
+        bitrate,
+        fps: 30,
+        videoFrameQueueSize: 5,
+        videoSize: 'custom',
+        videoSizeCustom: { width: 960, height: 540 },
+        videoCodec: 'h264',
+        canvasRenderer: true,
+        dataTransport: 'websocket',
+        hdr: false,
+        _tunnelSchema: TUNNEL_SCHEMA
+      };
+      localStorage.setItem('mlSettings', JSON.stringify(next));
+      return true;
+    } catch (error) {
+      console.warn('[Cozy Arcade] Could not write mlSettings:', error);
+      return false;
+    }
+  }
 
   async function refreshStatus() {
     await Promise.all([
@@ -209,6 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function startConnection() {
+    ensureTunnelSafeMlSettings(false);
     const targetUrl = bridgeUrlInput.value.trim() || '/stream/';
     const usesConfiguredProxy = targetUrl === '/stream' || targetUrl.startsWith('/stream/');
     if (usesConfiguredProxy) {
@@ -223,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
     streamOverlay.classList.remove('hidden');
     overlayIcon.textContent = '⌛';
     overlayTitle.textContent = 'Loading stream…';
-    overlayMessage.textContent = 'Waiting for the Moonlight page to respond.';
+    overlayMessage.textContent = 'Waiting for the Moonlight page to respond. If this stalls, use Open stream in new tab.';
     quickStartBtn.classList.add('hidden');
     reconnectBtn.classList.add('hidden');
     setConnectionControls(true, 'Connecting to stream…');
@@ -238,13 +376,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // Moonlight UI loaded (iframe HTML). Stream session still needs WebSocket
       // data transport over Cloudflare — WebRTC UDP will not work through the tunnel.
       streamOverlay.classList.add('hidden');
-      setConnectionControls(true, 'Moonlight UI loaded — start Desktop; use Data Transport = Web Socket if the stream stalls');
+      setConnectionControls(true, 'Moonlight UI loaded — start Desktop; blank video → Open stream in new tab');
     };
     streamIframe.onerror = () => showFailure('Stream page failed to load', 'Check the bridge address, then reconnect.');
     iframeLoadTimer = window.setTimeout(() => {
       showFailure(
         'Moonlight UI timed out (iframe never loaded)',
-        'The /stream/ page did not respond in 45s. Open https://lizandadd.com/stream/ in a new tab after unlock. If that works but Connect Stream fails, hard-refresh /play. If the UI loads but the game stream hangs, set Moonlight Settings → Data Transport → Web Socket (required through Cloudflare).'
+        'Use Open stream in new tab (https://lizandadd.com/stream/) after unlock. Hard-refresh /play if needed. Blank video with audio usually means settings were not tunnel-safe — click Fix video settings first.'
       );
     }, 45000);
     streamIframe.src = targetUrl;
@@ -293,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
     overlayIcon.textContent = '🎮😸';
     overlayTitle.textContent = streamHealthy ? 'Ready to Play?' : 'Checking stream bridge…';
     overlayMessage.textContent = streamHealthy
-      ? 'Connect to open the embedded Moonlight stream. Both of you can join for split-screen.'
+      ? 'Connect Stream embeds Moonlight here, or open it in a new tab (more reliable). Both of you can join for split-screen.'
       : 'The portal is verifying that moonlight-web-stream is reachable.';
     if (overlayLoginHint) {
       overlayLoginHint.hidden = !streamHealthy;
@@ -419,6 +557,10 @@ document.addEventListener('DOMContentLoaded', () => {
     qosGuidance.textContent = QOS_PRESETS[preset];
     if (persist) {
       localStorage.setItem('arcadeQosPreset', preset);
+    }
+    // Persist=true = user clicked a preset → force rewrite. Initial load uses ensureTunnelSafeMlSettings below.
+    if (persist) {
+      ensureTunnelSafeMlSettings(true);
     }
   }
 
